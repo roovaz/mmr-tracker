@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login - MMR Tracker</title>
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="stylesheet" href="/static/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="admin-login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <h1>MMR Tracker</h1>
+                <p>Admin Login</p>
+            </div>
+
+            <form id="login-form" class="login-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required autocomplete="username">
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required autocomplete="current-password">
+                </div>
+
+                <div id="login-error" class="login-error"></div>
+
+                <button type="submit" class="login-btn">Login</button>
+            </form>
+
+            <div class="login-footer">
+                <a href="/">Back to Leaderboard</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Check if already logged in
+        const token = localStorage.getItem('admin_token');
+        if (token) {
+            // Verify token
+            fetch('/api/admin/verify', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(res => {
+                if (res.ok) {
+                    window.location.href = '/admin/dashboard';
+                } else {
+                    localStorage.removeItem('admin_token');
+                }
+            });
+        }
+
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorEl = document.getElementById('login-error');
+
+            try {
+                const response = await fetch('/api/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    localStorage.setItem('admin_token', data.access_token);
+                    window.location.href = '/admin/dashboard';
+                } else {
+                    errorEl.textContent = data.detail || 'Invalid credentials';
+                    errorEl.style.display = 'block';
+                }
+            } catch (error) {
+                errorEl.textContent = 'Login failed. Please try again.';
+                errorEl.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>
