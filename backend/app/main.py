@@ -1,4 +1,5 @@
 import os
+import sys
 import asyncio
 from datetime import datetime
 from typing import List, Optional
@@ -13,6 +14,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
 
+import logging
+
+# Configure logging to stdout for Railway
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger(__name__)
+
+# Log startup info
+logger.info(f"Starting application...")
+logger.info(f"Python version: {sys.version}")
+logger.info(f"PORT env: {os.getenv('PORT', 'not set')}")
+logger.info(f"DATABASE_URL env: {'set' if os.getenv('DATABASE_URL') else 'NOT SET'}")
+
 from app.database import init_db, get_session, User, Snapshot, ScrapeJob, async_session
 from app.models import (
     ProfileURLInput,
@@ -24,37 +41,38 @@ from app.models import (
 from app.scraper import get_scraper, scraper
 from app.utils import hash_url, parse_stripe_profile_url, normalize_url
 
-import logging
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Track if database is initialized
+db_initialized = False
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global db_initialized
     # Startup
-    logger.info("Starting up...")
-    await init_db()
-    logger.info("Database initialized")
+    logger.info("Lifespan startup beginning...")
 
-    # Install playwright browsers
-    logger.info("Installing Playwright browsers...")
-    proc = await asyncio.create_subprocess_shell(
-        "playwright install chromium",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
-    stdout, stderr = await proc.communicate()
-    if proc.returncode == 0:
-        logger.info("Playwright browsers installed")
-    else:
-        logger.warning(f"Playwright install warning: {stderr.decode()}")
+    # Initialize database
+    try:
+        logger.info("Initializing database...")
+        await init_db()
+        db_initialized = True
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}")
+        db_initialized = False
 
+    # Skip playwright install at startup - it's already installed in Docker
+    logger.info("Playwright browsers should be pre-installed in Docker image")
+
+    logger.info("Application startup complete")
     yield
 
     # Shutdown
     logger.info("Shutting down...")
-    await scraper.stop()
+    try:
+        await scraper.stop()
+    except Exception as e:
+        logger.error(f"Error stopping scraper: {e}")
 
 
 app = FastAPI(
@@ -325,30 +343,51 @@ async def get_snapshot(snapshot_id: UUID, session: AsyncSession = Depends(get_se
     )
 
 
+@app.get("/api/health")
+async def health_check():
+    """Simple health check that doesn't require database"""
+    return {"status": "ok", "db_initialized": db_initialized}
+
+
 @app.get("/api/stats")
 async def get_stats(session: AsyncSession = Depends(get_session)):
     """Get scraper statistics"""
     from sqlalchemy import func
 
-    users_count = await session.execute(select(func.count(User.id)))
-    snapshots_count = await session.execute(select(func.count(Snapshot.id)))
-    jobs_pending = await session.execute(
-        select(func.count(ScrapeJob.id)).where(ScrapeJob.status == 'pending')
-    )
-    jobs_completed = await session.execute(
-        select(func.count(ScrapeJob.id)).where(ScrapeJob.status == 'completed')
-    )
-    jobs_failed = await session.execute(
-        select(func.count(ScrapeJob.id)).where(ScrapeJob.status == 'failed')
-    )
+    try:
+        users_count = await session.execute(select(func.count(User.id)))
+        snapshots_count = await session.execute(select(func.count(Snapshot.id)))
+        jobs_pending = await session.execute(
+            select(func.count(ScrapeJob.id)).where(ScrapeJob.status == 'pending')
+        )
+        jobs_completed = await session.execute(
+            select(func.count(ScrapeJob.id)).where(ScrapeJob.status == 'completed')
+        )
+        jobs_failed = await session.execute(
+            select(func.count(ScrapeJob.id)).where(ScrapeJob.status == 'failed')
+        )
 
-    return {
-        "total_users": users_count.scalar(),
-        "total_snapshots": snapshots_count.scalar(),
-        "jobs_pending": jobs_pending.scalar(),
-        "jobs_completed": jobs_completed.scalar(),
-        "jobs_failed": jobs_failed.scalar()
-    }
+        return {
+            "status": "ok",
+            "db_initialized": db_initialized,
+            "total_users": users_count.scalar(),
+            "total_snapshots": snapshots_count.scalar(),
+            "jobs_pending": jobs_pending.scalar(),
+            "jobs_completed": jobs_completed.scalar(),
+            "jobs_failed": jobs_failed.scalar()
+        }
+    except Exception as e:
+        logger.error(f"Error getting stats: {e}")
+        return {
+            "status": "error",
+            "db_initialized": db_initialized,
+            "error": str(e),
+            "total_users": 0,
+            "total_snapshots": 0,
+            "jobs_pending": 0,
+            "jobs_completed": 0,
+            "jobs_failed": 0
+        }
 
 
 # Serve static files
