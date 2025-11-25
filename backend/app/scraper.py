@@ -2,7 +2,7 @@ import asyncio
 import re
 import json
 from typing import Optional, Dict, Any
-from playwright.async_api import async_playwright, Page, Browser
+from playwright.async_api import async_playwright, Page, Browser, Playwright
 from bs4 import BeautifulSoup
 from app.models import ScrapedProfile
 import logging
@@ -14,29 +14,60 @@ logger = logging.getLogger(__name__)
 class StripeProfileScraper:
     def __init__(self):
         self.browser: Optional[Browser] = None
-        self.playwright = None
+        self.playwright: Optional[Playwright] = None
+        self._lock = asyncio.Lock()
+
+    async def _ensure_browser(self):
+        """Ensure browser is running, restart if closed"""
+        async with self._lock:
+            # Check if browser exists and is connected
+            if self.browser and self.browser.is_connected():
+                return
+
+            # Close old instances if they exist
+            await self._cleanup()
+
+            # Start fresh
+            logger.info("Starting new browser instance...")
+            self.playwright = await async_playwright().start()
+            self.browser = await self.playwright.chromium.launch(
+                headless=True,
+                args=[
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--single-process'
+                ]
+            )
+            logger.info("Browser started successfully")
+
+    async def _cleanup(self):
+        """Clean up browser resources"""
+        try:
+            if self.browser:
+                await self.browser.close()
+        except Exception as e:
+            logger.warning(f"Error closing browser: {e}")
+        finally:
+            self.browser = None
+
+        try:
+            if self.playwright:
+                await self.playwright.stop()
+        except Exception as e:
+            logger.warning(f"Error stopping playwright: {e}")
+        finally:
+            self.playwright = None
 
     async def start(self):
         """Initialize the browser"""
-        self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(
-            headless=True,
-            args=[
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--single-process'
-            ]
-        )
-        logger.info("Browser started successfully")
+        await self._ensure_browser()
 
     async def stop(self):
         """Close the browser"""
-        if self.browser:
-            await self.browser.close()
-        if self.playwright:
-            await self.playwright.stop()
+        async with self._lock:
+            await self._cleanup()
         logger.info("Browser stopped")
 
     def parse_url(self, url: str) -> tuple[str, str]:
@@ -51,12 +82,13 @@ class StripeProfileScraper:
         """Scrape a single Stripe profile page"""
         username, profile_code = self.parse_url(url)
 
-        if not self.browser:
-            await self.start()
+        # Ensure browser is running
+        await self._ensure_browser()
 
-        page = await self.browser.new_page()
-
+        page = None
         try:
+            page = await self.browser.new_page()
+
             # Set realistic headers
             await page.set_extra_http_headers({
                 'Accept-Language': 'en-US,en;q=0.9',
@@ -105,9 +137,17 @@ class StripeProfileScraper:
 
         except Exception as e:
             logger.error(f"Error scraping {url}: {str(e)}")
+            # If browser crashed, mark it for restart
+            if "closed" in str(e).lower() or "crash" in str(e).lower():
+                async with self._lock:
+                    self.browser = None
             raise
         finally:
-            await page.close()
+            if page:
+                try:
+                    await page.close()
+                except Exception as e:
+                    logger.warning(f"Error closing page: {e}")
 
     async def _extract_data(self, page: Page, soup: BeautifulSoup) -> Dict[str, Any]:
         """Extract all available data from the profile page"""
