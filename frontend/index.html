@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stripe Profile Scraper</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Stripe Profile Scraper</h1>
+            <p class="subtitle">Scrape and store Stripe public profile data</p>
+        </header>
+
+        <!-- Stats Section -->
+        <section class="stats-section">
+            <div class="stat-card">
+                <span class="stat-value" id="total-users">-</span>
+                <span class="stat-label">Total Users</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value" id="total-snapshots">-</span>
+                <span class="stat-label">Snapshots</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value" id="jobs-pending">-</span>
+                <span class="stat-label">Pending Jobs</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value" id="jobs-completed">-</span>
+                <span class="stat-label">Completed</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value" id="jobs-failed">-</span>
+                <span class="stat-label">Failed</span>
+            </div>
+        </section>
+
+        <!-- Input Section -->
+        <section class="input-section">
+            <h2>Submit Profile URLs</h2>
+            <p class="help-text">Enter one or more Stripe profile URLs (one per line)</p>
+            <p class="help-text">Format: https://profile.stripe.com/username/CODE</p>
+            <textarea
+                id="urls-input"
+                placeholder="https://profile.stripe.com/angelmatch/FL1A8oo4&#10;https://profile.stripe.com/another/XY2Z3abc"
+                rows="5"
+            ></textarea>
+            <div class="button-row">
+                <button id="submit-btn" class="primary-btn">Submit for Scraping</button>
+                <button id="clear-btn" class="secondary-btn">Clear</button>
+            </div>
+            <div id="submit-result" class="result-message"></div>
+        </section>
+
+        <!-- Tabs -->
+        <section class="tabs-section">
+            <div class="tabs">
+                <button class="tab active" data-tab="jobs">Jobs</button>
+                <button class="tab" data-tab="users">Users</button>
+            </div>
+
+            <!-- Jobs Tab -->
+            <div id="jobs-tab" class="tab-content active">
+                <div class="filter-row">
+                    <select id="jobs-filter">
+                        <option value="">All Status</option>
+                        <option value="pending">Pending</option>
+                        <option value="processing">Processing</option>
+                        <option value="completed">Completed</option>
+                        <option value="failed">Failed</option>
+                    </select>
+                    <button id="refresh-jobs" class="secondary-btn">Refresh</button>
+                </div>
+                <div id="jobs-list" class="list-container">
+                    <p class="loading">Loading jobs...</p>
+                </div>
+            </div>
+
+            <!-- Users Tab -->
+            <div id="users-tab" class="tab-content">
+                <div class="filter-row">
+                    <input type="text" id="user-search" placeholder="Search by username...">
+                    <button id="refresh-users" class="secondary-btn">Refresh</button>
+                </div>
+                <div id="users-list" class="list-container">
+                    <p class="loading">Loading users...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Detail Modal -->
+        <div id="detail-modal" class="modal">
+            <div class="modal-content">
+                <span class="close-btn">&times;</span>
+                <div id="modal-body"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
