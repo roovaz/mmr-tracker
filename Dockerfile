@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# Install system dependencies for Playwright
+# Install system dependencies for Playwright (all required libs + fonts)
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -22,6 +22,16 @@ RUN apt-get update && apt-get install -y \
     libpango-1.0-0 \
     libcairo2 \
     libatspi2.0-0 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxext6 \
+    libxcursor1 \
+    libxi6 \
+    libxtst6 \
+    fonts-liberation \
+    fonts-noto-color-emoji \
+    fonts-unifont \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -30,9 +40,8 @@ WORKDIR /app
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browsers
+# Install Playwright browsers (skip install-deps as we installed manually)
 RUN playwright install chromium
-RUN playwright install-deps chromium
 
 # Copy all files
 COPY backend/ ./backend/
